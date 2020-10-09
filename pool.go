@@ -13,25 +13,20 @@ type Pool struct {
 	Wg              sync.WaitGroup
 }
 
-type PoolForInfinite struct {
-	GoroutineNumber int
-	Task            chan func() error
-	FinishCallback  func()
-	HandleError     func(error)
-}
-
 func (p *Pool) Init(goroutineNumber int, taskNumber int) {
 	p.GoroutineNumber = goroutineNumber
-	p.Wg.Add(taskNumber)
+	p.Wg.Add(taskNumber + 1)
 	p.Task = make(chan func() error, taskNumber)
 }
 
-func (p *PoolForInfinite) Init(goroutineNumber int) {
+func (p *Pool) InitForInfinite(goroutineNumber int) {
 	p.GoroutineNumber = goroutineNumber
+	p.Wg.Add(1)
 	p.Task = make(chan func() error)
 }
 
 func (p *Pool) Start() {
+	var once sync.Once
 	for i := 0; i < p.GoroutineNumber; i++ {
 		go func() {
 			for {
@@ -39,6 +34,9 @@ func (p *Pool) Start() {
 				if !ok {
 					break
 				}
+				once.Do(func() {
+					p.Wg.Done()
+				})
 				err := task()
 				if err != nil {
 					if p.HandleError != nil {
@@ -57,29 +55,7 @@ func (p *Pool) Start() {
 	}
 }
 
-func (p *PoolForInfinite) Start() {
-	for i := 0; i < p.GoroutineNumber; i++ {
-		go func() {
-			for {
-				task := <-p.Task
-				err := task()
-				if err != nil {
-					if p.HandleError != nil {
-						p.HandleError(err)
-					} else {
-						fmt.Println(err)
-					}
-				}
-			}
-		}()
-	}
-}
-
 func (p *Pool) Stop() {
-	close(p.Task)
-}
-
-func (p *PoolForInfinite) Stop() {
 	close(p.Task)
 }
 
@@ -87,7 +63,8 @@ func (p *Pool) AddTask(task func() error) {
 	p.Task <- task
 }
 
-func (p *PoolForInfinite) AddTask(task func() error) {
+func (p *Pool) AddTaskForInfinite(task func() error) {
+	p.Wg.Add(1)
 	p.Task <- task
 }
 
@@ -96,9 +73,5 @@ func (p *Pool) SetFinishCallback(fun func()) {
 }
 
 func (p *Pool) SetHandleError(fun func(error)) {
-	p.HandleError = fun
-}
-
-func (p *PoolForInfinite) SetHandleError(fun func(error)) {
 	p.HandleError = fun
 }

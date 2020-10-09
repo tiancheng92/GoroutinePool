@@ -2,18 +2,14 @@ package main
 
 import (
 	"GoroutinePool"
-	"errors"
+	"context"
 	"fmt"
-	"math/rand"
 	"time"
 )
 
-func CalRemainder(a int64, b int64) error {
+func MockTask(index int) error {
 	time.Sleep(time.Second)
-	if b == 0 {
-		return errors.New("The divisor cannot be zero\n")
-	}
-	fmt.Printf("%d %% %d = %d\n", a, b, a%b)
+	fmt.Printf("task %d finish\n", index)
 	return nil
 }
 
@@ -28,13 +24,13 @@ func FinishCallback() {
 func LimitedTaskCount() {
 	var p GoroutinePool.Pool
 	defer p.Stop()
-	numbers := []int64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-	p.Init(3, len(numbers))
+	taskNumbers := 10
+	p.Init(3, taskNumbers)
 
-	for index := range numbers {
-		number := numbers[index]
+	for i := 1; i <= taskNumbers; i++ {
+		index := i
 		p.AddTask(func() error {
-			return CalRemainder(number, 3)
+			return MockTask(index)
 		})
 	}
 	p.SetHandleError(HandleError)
@@ -42,27 +38,44 @@ func LimitedTaskCount() {
 	p.Start()
 }
 
-func InfiniteTaskCount(numberChan chan int64) {
-	var p GoroutinePool.PoolForInfinite
-	p.Init(20)
+func InfiniteTaskCount(ctx context.Context) {
+	var indexChan = make(chan int)
+	var p GoroutinePool.Pool
+
+	p.InitForInfinite(2)
 	p.SetHandleError(HandleError)
-	p.Start()
+
 	go func() {
+		i := 1
 		for {
-			number := <-numberChan
-			p.AddTask(func() error {
-				return CalRemainder(number, 3)
-			})
+			indexChan <- i
+			i++
 		}
 	}()
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				break
+			default:
+				p.AddTaskForInfinite(func() error {
+					return MockTask(<-indexChan)
+				})
+			}
+		}
+	}()
+
+	p.SetFinishCallback(func() {
+		fmt.Println("已经达到设定的任务执行时长")
+	})
+	p.Start()
 }
 
 func main() {
-	var numberChan = make(chan int64)
-	InfiniteTaskCount(numberChan)
-	rand.Seed(time.Now().Unix())
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	InfiniteTaskCount(ctx)
 
-	for {
-		numberChan <- rand.Int63n(10)
-	}
+	LimitedTaskCount()
 }
