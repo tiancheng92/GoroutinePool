@@ -79,6 +79,10 @@ func (p *Pool) Stop() {
 	close(p.Task)
 }
 
+func (p *PoolForInfinite) Stop() {
+	close(p.Task)
+}
+
 func (p *Pool) AddTask(task func() error) {
 	p.Task <- task
 }
