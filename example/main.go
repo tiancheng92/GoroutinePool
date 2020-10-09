@@ -4,6 +4,7 @@ import (
 	"GoroutinePool"
 	"errors"
 	"fmt"
+	"math/rand"
 	"time"
 )
 
@@ -24,12 +25,12 @@ func FinishCallback() {
 	fmt.Println("所有协程均执行完毕。")
 }
 
-func main() {
+func LimitedTaskCount() {
 	var p GoroutinePool.Pool
 	defer p.Stop()
 	numbers := []int64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 	p.Init(3, len(numbers))
-	
+
 	for index := range numbers {
 		number := numbers[index]
 		p.AddTask(func() error {
@@ -39,4 +40,29 @@ func main() {
 	p.SetHandleError(HandleError)
 	p.SetFinishCallback(FinishCallback)
 	p.Start()
+}
+
+func InfiniteTaskCount(numberChan chan int64) {
+	var p GoroutinePool.PoolForInfinite
+	p.Init(20)
+	p.SetHandleError(HandleError)
+	p.Start()
+	go func() {
+		for {
+			number := <-numberChan
+			p.AddTask(func() error {
+				return CalRemainder(number, 3)
+			})
+		}
+	}()
+}
+
+func main() {
+	var numberChan = make(chan int64)
+	InfiniteTaskCount(numberChan)
+	rand.Seed(time.Now().Unix())
+
+	for {
+		numberChan <- rand.Int63n(10)
+	}
 }
