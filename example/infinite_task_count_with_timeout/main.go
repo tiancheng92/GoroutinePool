@@ -51,6 +51,7 @@ func main() {
 		for {
 			select {
 			case <-ctx.Done():
+				p.Stop()
 				break
 			default:
 				p.AddTask(func() error {

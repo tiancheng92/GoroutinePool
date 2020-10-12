@@ -7,10 +7,12 @@ import (
 
 type Pool struct {
 	CoroutinesCount int               // 协程数量
+	TasksCount      int               // 任务数量
 	Task            chan func() error // 存储任务的管道
 	FinishCallback  func()            // 任务全部完成后回调的函数
 	HandleError     func(error)       // 任务的错误处理
-	Wg              sync.WaitGroup
+	Wg              sync.WaitGroup    // 阻塞
+	Once            sync.Once         // 用于确保Stop只执行一次
 }
 
 // New 新建Pool对象
@@ -24,6 +26,13 @@ func New() *Pool {
 // SetCoroutinesCount 设定协程数量
 func (p *Pool) SetCoroutinesCount(count int) *Pool {
 	p.CoroutinesCount = count
+	return p
+}
+
+// SetCoroutinesCount 设定协程数量
+func (p *Pool) SetTasksCount(count int) *Pool {
+	p.TasksCount = count
+	p.Wg.Add(count - 1)
 	return p
 }
 
@@ -41,13 +50,11 @@ func (p *Pool) SetHandleError(function func(error)) *Pool {
 
 // AddTask 添加任务
 func (p *Pool) AddTask(task func() error) {
-	p.Wg.Add(1)
 	p.Task <- task
 }
 
 // Start 开始执行任务
 func (p *Pool) Start() {
-	var once sync.Once
 	for i := 0; i < p.CoroutinesCount; i++ {
 		go func() {
 			for {
@@ -55,9 +62,6 @@ func (p *Pool) Start() {
 				if !ok {
 					break
 				}
-				once.Do(func() {
-					p.Wg.Done()
-				})
 				err := task()
 				if err != nil {
 					if p.HandleError != nil {
@@ -66,7 +70,9 @@ func (p *Pool) Start() {
 						fmt.Println(err)
 					}
 				}
-				p.Wg.Done()
+				if p.TasksCount > 0 {
+					p.Wg.Done()
+				}
 			}
 		}()
 	}
@@ -74,9 +80,16 @@ func (p *Pool) Start() {
 	if p.FinishCallback != nil {
 		p.FinishCallback()
 	}
+
 }
 
 // Stop 终止任务
 func (p *Pool) Stop() {
-	close(p.Task)
+	p.Once.Do(
+		func() {
+			if p.TasksCount == 0 {
+				p.Wg.Done()
+			}
+			close(p.Task)
+		})
 }

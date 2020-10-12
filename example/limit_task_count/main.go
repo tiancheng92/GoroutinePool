@@ -29,6 +29,7 @@ func main() {
 	defer p.Stop()
 
 	p.SetCoroutinesCount(3).
+		SetTasksCount(10).
 		SetHandleError(HandleError).
 		SetFinishCallback(FinishCallback)
 
